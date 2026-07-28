@@ -1,5 +1,5 @@
 {
-  description = "core-nomos — the stringless Core of Nomos: macros as typed data lowering CoreSchema to CoreLogos, with the real generated Rust as the acceptance oracle";
+  description = "ethos-engine — EncodedEthos daemon and thin CLI";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -16,7 +16,7 @@
         pkgs = import nixpkgs { inherit system; };
         rust = rust-build.lib.${system}.fromPkgs pkgs;
         inherit (rust) craneLib toolchain;
-        # The equivalence witness reads a .schema fixture; preserve non-Rust test data
+        # The equivalence witness reads an .ethos fixture; preserve non-Rust test data
         # (rust.cleanSource strips it), mirroring language-engine-witness.
         src = pkgs.lib.cleanSource ./.;
         commonArguments = { inherit src; strictDeps = true; };
@@ -38,7 +38,7 @@
           });
         };
         devShells.default = pkgs.mkShell {
-          name = "core-nomos";
+          name = "ethos-engine";
           packages = [ pkgs.jujutsu toolchain ];
         };
       });

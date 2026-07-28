@@ -1,9 +1,9 @@
-use core_schema::{
-    CoreDeclaration, CoreEnum, CoreField, CoreNewtype, CoreReference, CoreSchema, CoreStruct,
-    CoreType, CoreVariant, DeclarationRole, MultiTypeReferenceProjection,
+use core_ethos::{
+    DeclarationRole, EncodedDeclaration, EncodedEnum, EncodedEthos, EncodedField, EncodedNewtype,
+    EncodedReference, EncodedStruct, EncodedType, EncodedVariant, MultiTypeReferenceProjection,
     SingleTypeReferenceProjection, ValueReferenceProjection, Visibility,
 };
-use name_table::{Identifier, Name, NameTable};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable, NameTableError};
 use schema_language::{
     Declaration, EnumDeclaration, MultiTypeReferenceProjection as LegacyMultiProjection, Root,
     SchemaEngine, SchemaIdentity, SingleTypeReferenceProjection as LegacySingleProjection,
@@ -20,10 +20,12 @@ pub enum LegacyIngestError {
     UnsupportedApplication,
     #[error("unsupported application-form interface root")]
     UnsupportedInterfaceApplication,
+    #[error("native Ethos name table: {0}")]
+    Names(#[from] NameTableError),
 }
 
 pub struct LegacyMigration {
-    pub schema: CoreSchema,
+    pub ethos: EncodedEthos,
     pub names: NameTable,
 }
 
@@ -36,7 +38,9 @@ impl LegacySchemaIngest {
         let source =
             SchemaEngine::default().lower_source(text, SchemaIdentity::new("legacy-edge", "0"))?;
         let mut ingest = Self {
-            names: NameTable::new(),
+            // `Schema` is the current pre-identity name-table variant used by
+            // core-ethos; it is not an exported compatibility alias.
+            names: NameTable::new(IdentifierNamespace::Schema),
         };
         let mut declarations = source
             .namespace()
@@ -52,7 +56,7 @@ impl LegacySchemaIngest {
         declarations.push(ingest.migrate_interface(&input, DeclarationRole::InterfaceInput)?);
         declarations.push(ingest.migrate_interface(&output, DeclarationRole::InterfaceOutput)?);
         Ok(LegacyMigration {
-            schema: CoreSchema::new(declarations),
+            ethos: EncodedEthos::new(declarations),
             names: ingest.names,
         })
     }
@@ -65,11 +69,11 @@ impl LegacySchemaIngest {
         &mut self,
         root: &Root,
         role: DeclarationRole,
-    ) -> Result<CoreDeclaration, LegacyIngestError> {
+    ) -> Result<EncodedDeclaration, LegacyIngestError> {
         let enumeration = root
             .as_enum()
             .ok_or(LegacyIngestError::UnsupportedInterfaceApplication)?;
-        Ok(CoreDeclaration::interface(
+        Ok(EncodedDeclaration::interface(
             role,
             self.migrate_enumeration(enumeration)?,
         ))
@@ -78,10 +82,10 @@ impl LegacySchemaIngest {
     fn migrate_declaration(
         &mut self,
         declaration: &Declaration,
-    ) -> Result<CoreDeclaration, LegacyIngestError> {
+    ) -> Result<EncodedDeclaration, LegacyIngestError> {
         let value = match declaration.value() {
-            TypeDeclaration::Newtype(newtype) => CoreType::Newtype(CoreNewtype::new(
-                self.intern(newtype.name.as_str()),
+            TypeDeclaration::Newtype(newtype) => EncodedType::Newtype(EncodedNewtype::new(
+                self.intern(newtype.name.as_str())?,
                 self.migrate_reference(&newtype.reference)?,
             )),
             TypeDeclaration::Struct(structure) => {
@@ -89,14 +93,14 @@ impl LegacySchemaIngest {
                     .fields
                     .iter()
                     .map(|field| {
-                        Ok(CoreField::new(
-                            self.intern(field.name.as_str()),
+                        Ok(EncodedField::new(
+                            self.intern(field.name.as_str())?,
                             self.migrate_reference(&field.reference)?,
                         ))
                     })
                     .collect::<Result<Vec<_>, LegacyIngestError>>()?;
-                CoreType::Struct(CoreStruct::new(
-                    self.intern(structure.name.as_str()),
+                EncodedType::Struct(EncodedStruct::new(
+                    self.intern(structure.name.as_str())?,
                     fields,
                 ))
             }
@@ -107,19 +111,19 @@ impl LegacySchemaIngest {
         } else {
             Visibility::Public
         };
-        Ok(CoreDeclaration::new(visibility, value))
+        Ok(EncodedDeclaration::new(visibility, value))
     }
 
     fn migrate_enumeration(
         &mut self,
         enumeration: &EnumDeclaration,
-    ) -> Result<CoreType, LegacyIngestError> {
+    ) -> Result<EncodedType, LegacyIngestError> {
         let variants = enumeration
             .variants
             .iter()
             .map(|variant| {
-                Ok(CoreVariant::new(
-                    self.intern(variant.name.as_str()),
+                Ok(EncodedVariant::new(
+                    self.intern(variant.name.as_str())?,
                     variant
                         .payload
                         .as_ref()
@@ -128,8 +132,8 @@ impl LegacySchemaIngest {
                 ))
             })
             .collect::<Result<Vec<_>, LegacyIngestError>>()?;
-        Ok(CoreType::Enumeration(CoreEnum::new(
-            self.intern(enumeration.name.as_str()),
+        Ok(EncodedType::Enumeration(EncodedEnum::new(
+            self.intern(enumeration.name.as_str())?,
             variants,
         )))
     }
@@ -137,18 +141,18 @@ impl LegacySchemaIngest {
     fn migrate_reference(
         &mut self,
         reference: &TypeReference,
-    ) -> Result<CoreReference, LegacyIngestError> {
+    ) -> Result<EncodedReference, LegacyIngestError> {
         Ok(match reference {
-            TypeReference::String => CoreReference::String,
-            TypeReference::Integer => CoreReference::Integer,
-            TypeReference::Boolean => CoreReference::Boolean,
-            TypeReference::Bytes => CoreReference::Bytes,
+            TypeReference::String => EncodedReference::String,
+            TypeReference::Integer => EncodedReference::Integer,
+            TypeReference::Boolean => EncodedReference::Boolean,
+            TypeReference::Bytes => EncodedReference::Bytes,
             TypeReference::Path => return Err(LegacyIngestError::UnsupportedPath),
-            TypeReference::Plain(name) => CoreReference::Plain(self.intern(name.as_str())),
+            TypeReference::Plain(name) => EncodedReference::Plain(self.intern(name.as_str())?),
             TypeReference::SingleTypeApplication {
                 projection,
                 argument,
-            } => CoreReference::SingleTypeApplication {
+            } => EncodedReference::SingleTypeApplication {
                 projection: match projection {
                     LegacySingleProjection::Vector => SingleTypeReferenceProjection::Vector,
                     LegacySingleProjection::Optional => SingleTypeReferenceProjection::Optional,
@@ -159,7 +163,7 @@ impl LegacySchemaIngest {
             TypeReference::MultiTypeApplication {
                 projection,
                 arguments,
-            } => CoreReference::MultiTypeApplication {
+            } => EncodedReference::MultiTypeApplication {
                 projection: match projection {
                     LegacyMultiProjection::Map => MultiTypeReferenceProjection::Map,
                 },
@@ -169,7 +173,7 @@ impl LegacySchemaIngest {
                     .collect::<Result<Vec<_>, _>>()?,
             },
             TypeReference::ValueApplication { projection, value } => {
-                CoreReference::ValueApplication {
+                EncodedReference::ValueApplication {
                     projection: match projection {
                         LegacyValueProjection::Bytes => ValueReferenceProjection::Bytes,
                     },
@@ -182,21 +186,21 @@ impl LegacySchemaIngest {
         })
     }
 
-    fn intern(&mut self, spelling: &str) -> Identifier {
-        self.names.intern(Name::new(spelling))
+    fn intern(&mut self, spelling: &str) -> Result<Identifier, LegacyIngestError> {
+        Ok(self.names.intern(Name::new(spelling))?)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core_schema::{CoreType, TextualSchema};
+    use core_ethos::{EncodedType, TextualEthos};
     use name_table::NameResolver;
 
     /// A string-free six-slot document — no `Text`/`String` divergence — so the
-    /// legacy engine (`schema-language`) and the native document decode
-    /// (`core-schema`) parse the very same source, and their interface surfaces can
-    /// be compared directly.
+    /// legacy engine (`schema-language`) and the native `core-ethos` document decode
+    /// parse the very same source, and their interface surfaces can be compared
+    /// directly.
     const SHARED_MIN: &str = "\
 {}
 [Ping.Beat Poke.Nudge]
@@ -209,20 +213,20 @@ mod tests {
 {}
 {}";
 
-    /// The interface surface of a schema's input root, as `(root_name, [(variant,
-    /// payload)])`, resolved through the schema's own names — the comparable form
+    /// The interface surface of an Ethos input root, as `(root_name, [(variant,
+    /// payload)])`, resolved through the Ethos unit's own names — the comparable form
     /// that abstracts over each front end's private identifier binding.
     fn input_surface(
-        schema: &CoreSchema,
+        ethos: &EncodedEthos,
         names: &impl NameResolver,
     ) -> (String, Vec<(String, String)>) {
-        let root = schema.input().expect("an input interface root");
+        let root = ethos.input().expect("an input interface root");
         assert_eq!(
             root.role(),
             DeclarationRole::InterfaceInput,
             "the input root carries the InterfaceInput role"
         );
-        let CoreType::Enumeration(enumeration) = root.value() else {
+        let EncodedType::Enumeration(enumeration) = root.value() else {
             panic!("an interface root is an enumeration");
         };
         let root_name = names
@@ -240,7 +244,7 @@ mod tests {
                     .as_str()
                     .to_owned();
                 let payload = match variant.payload() {
-                    Some(CoreReference::Plain(id)) => {
+                    Some(EncodedReference::Plain(id)) => {
                         names.resolve(*id).unwrap().as_str().to_owned()
                     }
                     other => panic!("interface payloads are Plain references, got {other:?}"),
@@ -256,10 +260,10 @@ mod tests {
     #[test]
     fn legacy_ingestion_tags_interface_roots_and_leaves_data_plain() {
         let migration = LegacySchemaIngest::migrate_text(SHARED_MIN).expect("legacy ingestion");
-        let schema = &migration.schema;
+        let ethos = &migration.ethos;
         let names = &migration.names;
 
-        let (input_name, input_variants) = input_surface(schema, names);
+        let (input_name, input_variants) = input_surface(ethos, names);
         assert_eq!(input_name, "Input");
         assert_eq!(
             input_variants,
@@ -269,7 +273,7 @@ mod tests {
             ],
         );
 
-        let output = schema.output().expect("an output interface root");
+        let output = ethos.output().expect("an output interface root");
         assert_eq!(output.role(), DeclarationRole::InterfaceOutput);
         assert_eq!(
             names.resolve(output.identifier()).unwrap().as_str(),
@@ -278,13 +282,13 @@ mod tests {
 
         // The data declarations stay plain: every non-interface declaration is a
         // DataType, and none is spuriously marked an interface root.
-        let data: Vec<&str> = schema
+        let data: Vec<&str> = ethos
             .data_declarations()
             .map(|declaration| names.resolve(declaration.identifier()).unwrap().as_str())
             .collect();
         assert_eq!(data, vec!["Beat", "Nudge", "Tick"]);
         assert_eq!(
-            schema
+            ethos
                 .declarations()
                 .iter()
                 .filter(|declaration| declaration.role() != DeclarationRole::DataType)
@@ -302,14 +306,14 @@ mod tests {
     fn native_and_legacy_agree_on_the_interface_surface() {
         let legacy = LegacySchemaIngest::migrate_text(SHARED_MIN).expect("legacy ingestion");
 
-        let mut native_names = name_table::NameTable::new();
-        let native = TextualSchema::schema_document()
+        let mut native_names = name_table::NameTable::new(name_table::IdentifierNamespace::Schema);
+        let native = TextualEthos::ethos_document()
             .expect("build the document grammar")
             .decode_document(SHARED_MIN, &mut native_names)
             .expect("native document decode");
 
         assert_eq!(
-            input_surface(&legacy.schema, &legacy.names),
+            input_surface(&legacy.ethos, &legacy.names),
             input_surface(&native, &native_names),
             "both front ends fill one interface representation for the same source",
         );

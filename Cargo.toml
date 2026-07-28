@@ -1,19 +1,24 @@
 [package]
-name="schema-engine"
-version="0.1.0"
+name="ethos-engine"
+version="0.2.0"
 edition="2024"
 rust-version="1.89"
 license="MIT OR Apache-2.0"
-repository="https://github.com/LiGoldragon/schema-engine"
-description="Core-first Schema daemon and thin CLI"
+repository="https://github.com/LiGoldragon/ethos-engine"
+description="EncodedEthos daemon and thin CLI"
 [dependencies]
-core-schema={git="https://github.com/LiGoldragon/core-schema.git",rev="d3cdee9ac2c17de16a7745c9854344d8bbcde64e"}
+core-ethos={git="https://github.com/LiGoldragon/core-ethos.git",rev="42fbbc08877a89958cc7ebc50814fc1e7247b038"}
+# The currently wired central-storage contract archives this exact pre-Ethos
+# package and name-table layout. Keep the compatibility types isolated to the
+# legacy storage adapter until that separately designed topology is dissolved.
+central-storage-core-schema={package="core-schema",git="https://github.com/LiGoldragon/core-schema.git",rev="d3cdee9ac2c17de16a7745c9854344d8bbcde64e"}
+central-storage-name-table={package="name-table",git="https://github.com/LiGoldragon/name-table.git",rev="c3237f77c087e6feab49d6cf34971cebc14a11e6"}
 content-identity={git="https://github.com/LiGoldragon/content-identity.git",rev="6cc0408cdb96f174cc8fdf6ca23420038de28450"}
-name-table={git="https://github.com/LiGoldragon/name-table.git",rev="c3237f77c087e6feab49d6cf34971cebc14a11e6"}
+name-table={git="https://github.com/LiGoldragon/name-table.git",rev="196610e2907687dcb8dbd0d2dfaafe4aefd9fa27"}
 schema-language={git="https://github.com/LiGoldragon/schema-language.git",rev="9c217610c4b8"}
 kameo={git="https://github.com/LiGoldragon/kameo.git",rev="f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01",default-features=false,features=["macros"]}
 rkyv={version="0.8",features=["bytecheck"]}
-signal-schema={git="https://github.com/LiGoldragon/signal-schema.git",rev="bc68dc8fa1b16b00156ca36e2690fd77fda91a52"}
+signal-ethos={git="https://github.com/LiGoldragon/signal-ethos.git",rev="30c96f026e9e3180ef7b31dfe167d1e6c6c7743b"}
 signal-sema-storage={git="https://github.com/LiGoldragon/signal-sema-storage.git",rev="31ab48608a3c2eab0733dcb16a3351251a70789d"}
 tokio={version="1",features=["macros","rt-multi-thread","net","io-util","fs","sync"]}
 thiserror="2"

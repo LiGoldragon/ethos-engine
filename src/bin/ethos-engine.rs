@@ -1,7 +1,7 @@
 use std::{env, path::PathBuf};
 
-use schema_engine::Runtime;
-use signal_schema::{Reply, Request, encode_reply, encode_request};
+use ethos_engine::Runtime;
+use signal_ethos::{Reply, Request, encode_reply, encode_request};
 use signal_sema_storage::{DocumentKind, FixtureScope, FrameMessage, SlotIdentifier, Wire};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -16,6 +16,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let socket = PathBuf::from(
                 arguments
                     .next()
+                    // Preserve the wired socket default during this terminology-only
+                    // train. The future stateful Ethos daemon gets its own runtime
+                    // surface with the storage migration, not by aliasing this path.
                     .unwrap_or_else(|| "/tmp/new-language-engine/schema.sock".into()),
             );
             let sema = PathBuf::from(
@@ -40,11 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some("ingest") => {
             let socket = PathBuf::from(arguments.next().ok_or("socket")?);
-            let file = PathBuf::from(arguments.next().ok_or("schema file")?);
+            let file = PathBuf::from(arguments.next().ok_or("Ethos file")?);
             let text = tokio::fs::read_to_string(file).await?;
             let reply = client(
                 &socket,
-                &Request::IngestTypeSchema {
+                &Request::IngestTypeEthos {
                     scope: FixtureScope(1),
                     slot: SlotIdentifier(1),
                     legacy_text: text,
@@ -58,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let socket = PathBuf::from(arguments.next().ok_or("socket")?);
             subscribe(&socket).await
         }
-        _ => Err("usage: schema-engine daemon [socket] [sema-socket] | ingest <socket> <file> | subscribe <socket>".into()),
+        _ => Err("usage: ethos-engine daemon [socket] [sema-socket] | ingest <socket> <file> | subscribe <socket>".into()),
     }
 }
 

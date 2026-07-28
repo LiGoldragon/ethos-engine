@@ -1,0 +1,177 @@
+//! Compatibility lowering for the currently wired central-storage archive.
+//!
+//! `signal-sema-storage` is a frozen donor whose `DocumentPayload::TypeSchema`
+//! still embeds the pre-Ethos `core-schema` and name-table layouts. This adapter
+//! deliberately produces those exact historical types at the socket boundary.
+//! Native engine surfaces use `core-ethos`; this module leaves with the old
+//! central-storage topology.
+
+use central_storage_core_schema::{
+    CoreDeclaration, CoreEnum, CoreField, CoreNewtype, CoreReference, CoreSchema, CoreStruct,
+    CoreType, CoreVariant, DeclarationRole, MultiTypeReferenceProjection,
+    SingleTypeReferenceProjection, ValueReferenceProjection, Visibility,
+};
+use central_storage_name_table::{Name, NameTable};
+use schema_language::{
+    Declaration, EnumDeclaration, MultiTypeReferenceProjection as LegacyMultiProjection, Root,
+    SchemaEngine, SchemaIdentity, SingleTypeReferenceProjection as LegacySingleProjection,
+    TypeDeclaration, TypeReference, ValueReferenceProjection as LegacyValueProjection,
+};
+
+use crate::legacy_ingest::LegacyIngestError;
+
+pub(crate) struct LegacyStorageMigration {
+    pub(crate) schema: CoreSchema,
+    pub(crate) names: NameTable,
+}
+
+pub(crate) struct LegacyStorageIngest {
+    names: NameTable,
+}
+
+impl LegacyStorageIngest {
+    pub(crate) fn migrate_text(text: &str) -> Result<LegacyStorageMigration, LegacyIngestError> {
+        let source =
+            SchemaEngine::default().lower_source(text, SchemaIdentity::new("legacy-edge", "0"))?;
+        let mut ingest = Self {
+            names: NameTable::new(),
+        };
+        let mut declarations = source
+            .namespace()
+            .iter()
+            .map(|declaration| ingest.migrate_declaration(declaration))
+            .collect::<Result<Vec<_>, _>>()?;
+        let [input, output] = source.input_and_output();
+        declarations.push(ingest.migrate_interface(&input, DeclarationRole::InterfaceInput)?);
+        declarations.push(ingest.migrate_interface(&output, DeclarationRole::InterfaceOutput)?);
+        Ok(LegacyStorageMigration {
+            schema: CoreSchema::new(declarations),
+            names: ingest.names,
+        })
+    }
+
+    fn migrate_interface(
+        &mut self,
+        root: &Root,
+        role: DeclarationRole,
+    ) -> Result<CoreDeclaration, LegacyIngestError> {
+        let enumeration = root
+            .as_enum()
+            .ok_or(LegacyIngestError::UnsupportedInterfaceApplication)?;
+        Ok(CoreDeclaration::interface(
+            role,
+            self.migrate_enumeration(enumeration)?,
+        ))
+    }
+
+    fn migrate_declaration(
+        &mut self,
+        declaration: &Declaration,
+    ) -> Result<CoreDeclaration, LegacyIngestError> {
+        let value = match declaration.value() {
+            TypeDeclaration::Newtype(newtype) => CoreType::Newtype(CoreNewtype::new(
+                self.intern(newtype.name.as_str()),
+                self.migrate_reference(&newtype.reference)?,
+            )),
+            TypeDeclaration::Struct(structure) => {
+                let fields = structure
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        Ok(CoreField::new(
+                            self.intern(field.name.as_str()),
+                            self.migrate_reference(&field.reference)?,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, LegacyIngestError>>()?;
+                CoreType::Struct(CoreStruct::new(
+                    self.intern(structure.name.as_str()),
+                    fields,
+                ))
+            }
+            TypeDeclaration::Enum(enumeration) => self.migrate_enumeration(enumeration)?,
+        };
+        let visibility = if declaration.is_private() {
+            Visibility::Private
+        } else {
+            Visibility::Public
+        };
+        Ok(CoreDeclaration::new(visibility, value))
+    }
+
+    fn migrate_enumeration(
+        &mut self,
+        enumeration: &EnumDeclaration,
+    ) -> Result<CoreType, LegacyIngestError> {
+        let variants = enumeration
+            .variants
+            .iter()
+            .map(|variant| {
+                Ok(CoreVariant::new(
+                    self.intern(variant.name.as_str()),
+                    variant
+                        .payload
+                        .as_ref()
+                        .map(|payload| self.migrate_reference(payload))
+                        .transpose()?,
+                ))
+            })
+            .collect::<Result<Vec<_>, LegacyIngestError>>()?;
+        Ok(CoreType::Enumeration(CoreEnum::new(
+            self.intern(enumeration.name.as_str()),
+            variants,
+        )))
+    }
+
+    fn migrate_reference(
+        &mut self,
+        reference: &TypeReference,
+    ) -> Result<CoreReference, LegacyIngestError> {
+        Ok(match reference {
+            TypeReference::String => CoreReference::String,
+            TypeReference::Integer => CoreReference::Integer,
+            TypeReference::Boolean => CoreReference::Boolean,
+            TypeReference::Bytes => CoreReference::Bytes,
+            TypeReference::Path => return Err(LegacyIngestError::UnsupportedPath),
+            TypeReference::Plain(name) => CoreReference::Plain(self.intern(name.as_str())),
+            TypeReference::SingleTypeApplication {
+                projection,
+                argument,
+            } => CoreReference::SingleTypeApplication {
+                projection: match projection {
+                    LegacySingleProjection::Vector => SingleTypeReferenceProjection::Vector,
+                    LegacySingleProjection::Optional => SingleTypeReferenceProjection::Optional,
+                    LegacySingleProjection::ScopeOf => SingleTypeReferenceProjection::ScopeOf,
+                },
+                argument: Box::new(self.migrate_reference(argument)?),
+            },
+            TypeReference::MultiTypeApplication {
+                projection,
+                arguments,
+            } => CoreReference::MultiTypeApplication {
+                projection: match projection {
+                    LegacyMultiProjection::Map => MultiTypeReferenceProjection::Map,
+                },
+                arguments: arguments
+                    .iter()
+                    .map(|argument| self.migrate_reference(argument))
+                    .collect::<Result<Vec<_>, _>>()?,
+            },
+            TypeReference::ValueApplication { projection, value } => {
+                CoreReference::ValueApplication {
+                    projection: match projection {
+                        LegacyValueProjection::Bytes => ValueReferenceProjection::Bytes,
+                    },
+                    value: *value,
+                }
+            }
+            TypeReference::Application { .. } => {
+                return Err(LegacyIngestError::UnsupportedApplication);
+            }
+        })
+    }
+
+    fn intern(&mut self, spelling: &str) -> central_storage_name_table::Identifier {
+        self.names.intern(Name::new(spelling))
+    }
+}

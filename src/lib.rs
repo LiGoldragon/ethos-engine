@@ -2,16 +2,17 @@ use std::{convert::Infallible, path::PathBuf};
 
 pub mod authority_ingest;
 mod legacy_ingest;
+mod legacy_storage_ingest;
 
-pub use authority_ingest::{AuthorityIngestError, ParsedSchema};
+pub use authority_ingest::{AuthorityIngestError, ParsedEthos};
 
 use kameo::{
     Actor,
     actor::{ActorRef, Spawn},
     message::{Context, Message},
 };
-use legacy_ingest::LegacySchemaIngest;
-use signal_schema::{Rejection as SchemaRejection, Reply as SchemaReply, Request as SchemaRequest};
+use legacy_storage_ingest::LegacyStorageIngest;
+use signal_ethos::{Rejection as EthosRejection, Reply as EthosReply, Request as EthosRequest};
 use signal_sema_storage::{
     ChangeEvent, DocumentKey, DocumentKind, DocumentPayload, FrameMessage, NameTableBytes,
     Reply as SemaReply, Request as SemaRequest, Snapshot, SubscriptionIdentifier, Wire,
@@ -112,9 +113,9 @@ impl Actor for NexusPlane {
         Ok(actor)
     }
 }
-pub struct Dispatch(pub SchemaRequest);
+pub struct Dispatch(pub EthosRequest);
 impl Message<Dispatch> for NexusPlane {
-    type Reply = Result<SchemaReply>;
+    type Reply = Result<EthosReply>;
     async fn handle(
         &mut self,
         message: Dispatch,
@@ -122,22 +123,17 @@ impl Message<Dispatch> for NexusPlane {
     ) -> Self::Reply {
         self.transforms += 1;
         let request = match message.0 {
-            // LEAN `offline-self-contained-ingest`: the `IngestTypeSchema` path migrates
-            // legacy text and stores the resulting schema DIRECTLY with its own
-            // parse-order name table — it never consults the central identity authority,
-            // so its identifiers are parse-order interned rather than authority-assigned.
-            // This is the offline mode; the authority-bound online path
-            // ([`authority_ingest::ParsedSchema`]) realizes the keystone. Revision
-            // trigger: wiring the daemon's default ingestion through the authority (a
-            // BindIdentities round-trip before Store), once the projection consumers read
-            // authority-assigned universes.
-            SchemaRequest::IngestTypeSchema {
+            // The currently wired storage contract still embeds the historical
+            // pre-Ethos schema archive. This edge adapter preserves those exact bytes;
+            // native Ethos ingestion is [`authority_ingest::ParsedEthos`]. The adapter
+            // disappears with the separately designed central-storage dissolution.
+            EthosRequest::IngestTypeEthos {
                 scope,
                 slot,
                 legacy_text,
             } => {
                 let migration = tokio::task::spawn_blocking(move || {
-                    LegacySchemaIngest::migrate_text(&legacy_text)
+                    LegacyStorageIngest::migrate_text(&legacy_text)
                 })
                 .await
                 .map_err(|error| Error::Actor(error.to_string()))?
@@ -161,7 +157,7 @@ impl Message<Dispatch> for NexusPlane {
                     },
                 }
             }
-            SchemaRequest::StoreSignalContract { scope, slot, root } => SemaRequest::Store {
+            EthosRequest::StoreSignalContract { scope, slot, root } => SemaRequest::Store {
                 key: DocumentKey {
                     scope,
                     kind: DocumentKind::SignalContract,
@@ -169,7 +165,7 @@ impl Message<Dispatch> for NexusPlane {
                 },
                 payload: DocumentPayload::SignalContract(root),
             },
-            SchemaRequest::StoreNexusRuntime { scope, slot, root } => SemaRequest::Store {
+            EthosRequest::StoreNexusRuntime { scope, slot, root } => SemaRequest::Store {
                 key: DocumentKey {
                     scope,
                     kind: DocumentKind::NexusRuntime,
@@ -177,7 +173,7 @@ impl Message<Dispatch> for NexusPlane {
                 },
                 payload: DocumentPayload::NexusRuntime(root),
             },
-            SchemaRequest::StoreSemaStorage { scope, slot, root } => SemaRequest::Store {
+            EthosRequest::StoreSemaStorage { scope, slot, root } => SemaRequest::Store {
                 key: DocumentKey {
                     scope,
                     kind: DocumentKind::SemaStorage,
@@ -185,9 +181,9 @@ impl Message<Dispatch> for NexusPlane {
                 },
                 payload: DocumentPayload::SemaStorage(root),
             },
-            SchemaRequest::List { scope, kind } => SemaRequest::List { scope, kind },
-            SchemaRequest::Fetch { hash } => SemaRequest::HashFetch { hash },
-            SchemaRequest::Subscribe { scope, kind } => SemaRequest::Subscribe { scope, kind },
+            EthosRequest::List { scope, kind } => SemaRequest::List { scope, kind },
+            EthosRequest::Fetch { hash } => SemaRequest::HashFetch { hash },
+            EthosRequest::Subscribe { scope, kind } => SemaRequest::Subscribe { scope, kind },
         };
         let reply = self
             .sema
@@ -202,11 +198,11 @@ impl Message<Dispatch> for NexusPlane {
                     snapshot: Snapshot(summary.version.0),
                     document: summary.clone(),
                 });
-                SchemaReply::Stored(summary)
+                EthosReply::Stored(summary)
             }
-            SemaReply::Listed(values) => SchemaReply::Listed(values),
+            SemaReply::Listed(values) => EthosReply::Listed(values),
             SemaReply::Document(value) => {
-                SchemaReply::Fetched(value.map(|document| signal_sema_storage::SlotSummary {
+                EthosReply::Fetched(value.map(|document| signal_sema_storage::SlotSummary {
                     key: document.key,
                     version: document.version,
                     hash: document.hash,
@@ -215,14 +211,14 @@ impl Message<Dispatch> for NexusPlane {
             SemaReply::Subscribed {
                 identifier,
                 initial,
-            } => SchemaReply::Subscribed {
+            } => EthosReply::Subscribed {
                 identifier,
                 initial,
             },
             SemaReply::Rejected(signal_sema_storage::Rejection::InvalidDocument(_)) => {
-                SchemaReply::Rejected(SchemaRejection::InvalidRoot)
+                EthosReply::Rejected(EthosRejection::InvalidRoot)
             }
-            _ => SchemaReply::Rejected(SchemaRejection::StorageFailed),
+            _ => EthosReply::Rejected(EthosRejection::StorageFailed),
         })
     }
 }
@@ -242,7 +238,7 @@ impl Actor for SignalPlane {
     }
 }
 impl Message<Dispatch> for SignalPlane {
-    type Reply = Result<SchemaReply>;
+    type Reply = Result<EthosReply>;
     async fn handle(
         &mut self,
         message: Dispatch,
@@ -279,7 +275,7 @@ impl Runtime {
             events,
         }
     }
-    pub async fn request(&self, request: SchemaRequest) -> Result<SchemaReply> {
+    pub async fn request(&self, request: EthosRequest) -> Result<EthosReply> {
         self.signal
             .ask(Dispatch(request))
             .send()
