@@ -30,7 +30,7 @@
 use core_ethos::{EncodedReference, EncodedType};
 use ethos_engine::ParsedEthos;
 use sema_storage::Runtime;
-use signal_sema_storage::{BoundIdentities, Reply, Request, SchemaWholeHandle};
+use signal_memory_storage::{BoundIdentities, Reply, Request, SchemaWholeHandle};
 
 /// The shared source both front ends parse. A purpose-authored minimal unit that
 /// exercises Plain cross-references, multi-field structs with elided (derived) field

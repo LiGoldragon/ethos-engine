@@ -19,7 +19,7 @@ schema-language={git="https://github.com/LiGoldragon/schema-language.git",rev="9
 kameo={git="https://github.com/LiGoldragon/kameo.git",rev="f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01",default-features=false,features=["macros"]}
 rkyv={version="0.8",features=["bytecheck"]}
 signal-ethos={git="https://github.com/LiGoldragon/signal-ethos.git",rev="30c96f026e9e3180ef7b31dfe167d1e6c6c7743b"}
-signal-sema-storage={git="https://github.com/LiGoldragon/signal-sema-storage.git",rev="31ab48608a3c2eab0733dcb16a3351251a70789d"}
+signal-memory-storage={git="https://github.com/LiGoldragon/signal-memory-storage.git",rev="939f17989571ca84e2c383e1b96f31febfee334a"}
 tokio={version="1",features=["macros","rt-multi-thread","net","io-util","fs","sync"]}
 thiserror="2"
 [dev-dependencies]

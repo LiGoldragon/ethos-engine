@@ -199,7 +199,7 @@ dependencies = [
  "schema-language",
  "sema-storage",
  "signal-ethos",
- "signal-sema-storage",
+ "signal-memory-storage",
  "tempfile",
  "thiserror",
  "tokio",
@@ -662,7 +662,7 @@ dependencies = [
  "rkyv",
  "sema-engine",
  "signal-frame",
- "signal-sema-storage",
+ "signal-memory-storage",
  "thiserror",
  "tokio",
 ]
@@ -709,7 +709,7 @@ version = "0.3.0"
 source = "git+https://github.com/LiGoldragon/signal-ethos.git?rev=30c96f026e9e3180ef7b31dfe167d1e6c6c7743b#30c96f026e9e3180ef7b31dfe167d1e6c6c7743b"
 dependencies = [
  "rkyv",
- "signal-sema-storage",
+ "signal-memory-storage",
  "thiserror",
 ]
 
@@ -744,9 +744,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "signal-sema-storage"
+name = "signal-memory-storage"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-sema-storage.git?rev=31ab48608a3c2eab0733dcb16a3351251a70789d#31ab48608a3c2eab0733dcb16a3351251a70789d"
+source = "git+https://github.com/LiGoldragon/signal-memory-storage.git?rev=939f17989571ca84e2c383e1b96f31febfee334a#939f17989571ca84e2c383e1b96f31febfee334a"
 dependencies = [
  "content-identity 0.1.0",
  "core-logos",

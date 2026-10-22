@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 use ethos_engine::Runtime;
 use signal_ethos::{Reply, Request, encode_reply, encode_request};
-use signal_sema_storage::{DocumentKind, FixtureScope, FrameMessage, SlotIdentifier, Wire};
+use signal_memory_storage::{DocumentKind, FixtureScope, FrameMessage, SlotIdentifier, Wire};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},

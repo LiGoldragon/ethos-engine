@@ -5,7 +5,7 @@ requests traverse state-bearing Signal → Nexus → SEMA Kameo actors. Nexus
 performs `IngestTypeEthos`; its edge adapter lowers into the frozen
 `TypeSchema` archive required by the central daemon's typed binary socket.
 
-The approved target is a stateful Ethos daemon whose own embedded sema
+The approved target is a stateful Ethos daemon whose own embedded memory
 database stores its documents. A separate small translator daemon owns only
 shared naming and encodedID allocation. The current socket path remains in
 place until a separately designed storage migration lands; it is not the

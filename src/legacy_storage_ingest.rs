@@ -1,6 +1,6 @@
 //! Compatibility lowering for the currently wired central-storage archive.
 //!
-//! `signal-sema-storage` is a frozen donor whose `DocumentPayload::TypeSchema`
+//! `signal-memory-storage` is a frozen donor whose `DocumentPayload::TypeSchema`
 //! still embeds the pre-Ethos `core-schema` and name-table layouts. This adapter
 //! deliberately produces those exact historical types at the socket boundary.
 //! Native engine surfaces use `core-ethos`; this module leaves with the old

@@ -13,7 +13,7 @@ use kameo::{
 };
 use legacy_storage_ingest::LegacyStorageIngest;
 use signal_ethos::{Rejection as EthosRejection, Reply as EthosReply, Request as EthosRequest};
-use signal_sema_storage::{
+use signal_memory_storage::{
     ChangeEvent, DocumentKey, DocumentKind, DocumentPayload, FrameMessage, NameTableBytes,
     Reply as SemaReply, Request as SemaRequest, Snapshot, SubscriptionIdentifier, Wire,
 };
@@ -173,13 +173,13 @@ impl Message<Dispatch> for NexusPlane {
                 },
                 payload: DocumentPayload::NexusRuntime(root),
             },
-            EthosRequest::StoreSemaStorage { scope, slot, root } => SemaRequest::Store {
+            EthosRequest::StoreMemoryStorage { scope, slot, root } => SemaRequest::Store {
                 key: DocumentKey {
                     scope,
-                    kind: DocumentKind::SemaStorage,
+                    kind: DocumentKind::MemoryStorage,
                     slot,
                 },
-                payload: DocumentPayload::SemaStorage(root),
+                payload: DocumentPayload::MemoryStorage(root),
             },
             EthosRequest::List { scope, kind } => SemaRequest::List { scope, kind },
             EthosRequest::Fetch { hash } => SemaRequest::HashFetch { hash },
@@ -202,7 +202,7 @@ impl Message<Dispatch> for NexusPlane {
             }
             SemaReply::Listed(values) => EthosReply::Listed(values),
             SemaReply::Document(value) => {
-                EthosReply::Fetched(value.map(|document| signal_sema_storage::SlotSummary {
+                EthosReply::Fetched(value.map(|document| signal_memory_storage::SlotSummary {
                     key: document.key,
                     version: document.version,
                     hash: document.hash,
@@ -215,7 +215,7 @@ impl Message<Dispatch> for NexusPlane {
                 identifier,
                 initial,
             },
-            SemaReply::Rejected(signal_sema_storage::Rejection::InvalidDocument(_)) => {
+            SemaReply::Rejected(signal_memory_storage::Rejection::InvalidDocument(_)) => {
                 EthosReply::Rejected(EthosRejection::InvalidRoot)
             }
             _ => EthosReply::Rejected(EthosRejection::StorageFailed),

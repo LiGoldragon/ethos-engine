@@ -37,7 +37,7 @@ use core_ethos::{
     ScalarSlot, TextualError, TextualEthos, UniverseError, Visibility,
 };
 use name_table::{IdentifierNamespace, Name, NameTable, NameTableError};
-use signal_sema_storage::{
+use signal_memory_storage::{
     BoundIdentities, DeclaredIdentity, DeclaredKey, DeclaredShape, IdentityIntent,
 };
 
