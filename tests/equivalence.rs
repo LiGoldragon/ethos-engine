@@ -1,7 +1,7 @@
 //! The keystone equivalence witness: one declared Ethos unit, ingested through the
 //! LEGACY front end (`schema-language` migration) and through the NATIVE front end
 //! (`core-ethos` six-slot document decode), BOTH bound through the currently wired
-//! legacy central identity authority (a live `sema-storage` runtime), yields IDENTICAL
+//! legacy central identity authority (a live `memory-storage` runtime), yields IDENTICAL
 //! `EncodedEthos` content identity.
 //!
 //! This is the equivalence the whole authority-provided universe path exists to
@@ -11,7 +11,7 @@
 //! name into a canonical order — collapses that difference. Two ingestions of one
 //! declared unit that received the same assignment build identical encoded content.
 //!
-//! This is the in-process engine-level floor: the authority is a real `sema-storage`
+//! This is the in-process engine-level floor: the authority is a real `memory-storage`
 //! `Runtime` (real bind-or-mint, real durable engine, real two-law enforcement) driven
 //! in-process rather than over a socket. The socket-live four-process pipeline is
 //! witnessed separately in `language-engine-witness`.
@@ -29,7 +29,7 @@
 
 use core_ethos::{EncodedReference, EncodedType};
 use ethos_engine::ParsedEthos;
-use sema_storage::Runtime;
+use memory_storage::Runtime;
 use signal_memory_storage::{BoundIdentities, Reply, Request, SchemaWholeHandle};
 
 /// The shared source both front ends parse. A purpose-authored minimal unit that
